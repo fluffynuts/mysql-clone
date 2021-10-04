@@ -3,6 +3,20 @@ MySQL-Clone
 
 A simple .net CLI utility to clone a mysql database
 
+Quick usage
+---
+```
+npm start -- --help
+```
+
+```
+npm run interactive
+```
+
+```
+npm start -- -h source-host -u source-user -p source-password -d source-database -H target-host -U target-user -P target-password -D target database
+```
+
 Build
 ---
 If you have dotnet core 5 and node installed, you should be able to:
