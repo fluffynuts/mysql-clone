@@ -101,7 +101,7 @@ namespace mysql_clone
             Console.WriteLine("Miscellaneous:");
             opts.DumpFile = Ask("  dump file:", opts.DumpFile);
             opts.RestoreOnly = TryGetBoolean(() => Ask("  restore only:", opts.RestoreOnly.ToString()));
-            opts.AfterRestoration = new[] { Ask("  after restore, run sql / file", "") };
+            opts.AfterRestoration = new[] { Ask("  after restore, run sql / file", "", emptyOk: true) };
         }
 
         private static bool TryGetBoolean(Func<string> func)
@@ -126,7 +126,11 @@ namespace mysql_clone
             }
         }
 
-        private static string Ask(string prompt, string current)
+        private static string Ask(
+            string prompt,
+            string current,
+            bool emptyOk = false
+        )
         {
             do
             {
@@ -139,21 +143,24 @@ namespace mysql_clone
                 {
                     current = thisAnswer;
                 }
-            } while (string.IsNullOrWhiteSpace(current));
+            } while (string.IsNullOrWhiteSpace(current) || emptyOk);
 
             return current;
         }
 
         private static void RunAfterCommands(IOptions opts, Tools tools)
         {
-            if ((opts.AfterRestoration?.Length ?? 0) == 0)
+            var items = opts.AfterRestoration
+                ?.Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToArray() ?? new string[0];
+            if (items.Length == 0)
             {
                 return;
             }
 
             StartStatus("Run in extra commands");
             using var io = StartMySqlClientForTargetDatabase(opts, tools, Fail);
-            foreach (var after in opts.AfterRestoration)
+            foreach (var after in items)
             {
                 if (File.Exists(after))
                 {
