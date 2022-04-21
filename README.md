@@ -6,13 +6,20 @@ A simple .net CLI utility to clone a mysql database
 Quick usage
 ---
 ```
+npm ci
+```
+
+_ask the tool how to use it:_
+```
 npm start -- --help
 ```
 
+_run interactively: answer some questions and get a cloned database:_
 ```
 npm run interactive
 ```
 
+_run like an expert:_
 ```
 npm start -- -h source-host -u source-user -p source-password -d source-database -H target-host -U target-user -P target-password -D target database
 ```
