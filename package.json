@@ -5,9 +5,9 @@
   "scripts": {
     "build": "cross-env DOTNET_CORE=1 BUILD_CONFIGURATION=Release run-s \"zarro build\"",
     "prestart": "run-s build",
-    "start": "run ./bin/net5.0/mysql-clone.exe",
+    "start": "run ./bin/net6.0/mysql-clone.exe",
     "preinteractive": "run-s build",
-    "interactive": "run ./bin/net5.0/mysql-clone.exe -i",
+    "interactive": "run ./bin/net6.0/mysql-clone.exe -i",
     "zarro": "zarro"
   },
   "keywords": [],

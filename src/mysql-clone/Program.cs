@@ -2,9 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using PeanutButter.EasyArgs;
-using PeanutButter.EasyArgs.Attributes;
 using PeanutButter.Utils;
 
 namespace mysql_clone
@@ -12,6 +12,7 @@ namespace mysql_clone
     class Program
     {
         private static string _lastLabel;
+        private static DateTime _started;
 
         static int Main(string[] args)
         {
@@ -30,17 +31,19 @@ namespace mysql_clone
                 Console.WriteLine($"Using mysql at: {tools.MySqlCli}");
             }
 
-            if (string.IsNullOrWhiteSpace(opts.SourcePassword) || string.IsNullOrWhiteSpace(opts.TargetPassword))
-            {
-                opts.Interactive = true;
-            }
 
             using var tempFile = new AutoTempFile();
             if (string.IsNullOrWhiteSpace(opts.DumpFile))
             {
                 opts.DumpFile = tempFile.Path;
             }
+            else if (opts.RestoreOnly && !File.Exists(opts.DumpFile))
+            {
+                Console.WriteLine($"dump file not found at {opts.DumpFile}");
+                return 2;
+            }
 
+            ForceInteractiveIfRequired(opts);
             RunInteractiveIfRequired(opts);
 
             if (opts.RestoreOnly)
@@ -63,9 +66,28 @@ namespace mysql_clone
             return 0;
         }
 
-        private static string ReadPassword(string prompt)
+        private static void ForceInteractiveIfRequired(IOptions opts)
         {
-            Console.Out.Write($"{prompt}: ");
+            var sourcePasswordRequired = !opts.RestoreOnly && string.IsNullOrWhiteSpace(opts.SourcePassword);
+            var targetPasswordRequired = string.IsNullOrWhiteSpace(opts.TargetPassword);
+            var sourceDbRequired = !opts.RestoreOnly && string.IsNullOrWhiteSpace(opts.SourceDatabase);
+            var targetDbRequired = string.IsNullOrWhiteSpace(opts.TargetDatabase);
+            // bare minimum required inputs as server, user & port have defaults
+            if (sourcePasswordRequired ||
+                targetPasswordRequired ||
+                sourceDbRequired ||
+                targetDbRequired)
+            {
+                opts.Interactive = true;
+            }
+        }
+
+        private static string ReadPassword(string prompt, string existing)
+        {
+            var add = string.IsNullOrWhiteSpace(existing)
+                ? ""
+                : $" ({new String('*', existing.Length)})";
+            Console.Out.Write($"{prompt}{add}: ");
             var captured = "";
             while (true)
             {
@@ -73,7 +95,9 @@ namespace mysql_clone
                 if (key.Key == ConsoleKey.Enter)
                 {
                     Console.Out.Write("\n");
-                    return captured;
+                    return string.IsNullOrWhiteSpace(captured)
+                        ? existing
+                        : captured;
                 }
 
                 Console.Out.Write("*");
@@ -83,25 +107,69 @@ namespace mysql_clone
 
         private static void RunInteractiveIfRequired(IOptions opts)
         {
-            Console.WriteLine("Source database:");
+            if (!opts.Interactive)
+            {
+                return;
+            }
 
-            opts.SourceHost = Ask("  host", opts.SourceHost);
-            opts.SourceUser = Ask("  user", opts.SourceUser);
-            opts.SourcePassword = ReadPassword("  password");
-            opts.SourceDatabase = Ask("  database", opts.SourceDatabase);
-            opts.SourcePort = TryGetInt(() => Ask("  port", opts.SourcePort.ToString()));
+            Console.WriteLine("Please specify a location for the dump file, if you'd like to:");
+            Console.WriteLine("- if the file exists, export can be skipped (import-only)");
+            Console.WriteLine("- if the file does not exist, it will be created, and left on disk");
+            Console.WriteLine("- if you accept the default, a temp file will be created and destroyed at exit");
+            opts.DumpFile = Ask("    dump file location:", opts.DumpFile);
+            if (File.Exists(opts.DumpFile))
+            {
+                opts.RestoreOnly = TryGetBoolean(() =>
+                    Ask(
+                        "  restore from existing dump file? ",
+                        "Y"
+                    )
+                );
+            }
+
+            if (!opts.RestoreOnly)
+            {
+                Console.WriteLine("Source database:");
+
+                opts.SourceHost = Ask("  host", opts.SourceHost);
+                opts.SourceUser = Ask("  user", opts.SourceUser);
+                opts.SourcePassword = ReadPassword("  password", "");
+                opts.SourceDatabase = Ask("  database", opts.SourceDatabase);
+                opts.SourcePort = TryGetInt(() => Ask("  port", opts.SourcePort.ToString()));
+            }
 
             Console.WriteLine("Target database:");
             opts.TargetHost = Ask("  host", opts.TargetHost);
-            opts.TargetUser = Ask("  user", opts.TargetUser);
-            opts.TargetPassword = ReadPassword("  password");
-            opts.TargetDatabase = Ask("  database", opts.TargetDatabase);
+            var (targetUser, targetPassword, targetDatabase, targetPort) =
+                (opts.TargetUser, opts.TargetPassword, opts.TargetDatabase, opts.TargetPort);
+            if (opts.SourceHost == opts.TargetHost)
+            {
+                targetUser = opts.SourceUser;
+                targetPassword = opts.SourcePassword;
+                targetPort = opts.SourcePort;
+            }
+            else
+            {
+                targetDatabase = opts.SourceDatabase; // assume a copy
+            }
+
+            opts.TargetUser = Ask("  user", FirstNonEmpty(opts.TargetUser, targetUser));
+            opts.TargetPassword = ReadPassword("  password", FirstNonEmpty(opts.TargetPassword, targetPassword));
+            opts.TargetDatabase = Ask("  database", FirstNonEmpty(opts.TargetDatabase, targetDatabase));
             opts.TargetPort = TryGetInt(() => Ask("  port", opts.TargetPort.ToString()));
 
-            Console.WriteLine("Miscellaneous:");
-            opts.DumpFile = Ask("  dump file:", opts.DumpFile);
-            opts.RestoreOnly = TryGetBoolean(() => Ask("  restore only:", opts.RestoreOnly.ToString()));
-            opts.AfterRestoration = new[] { Ask("  after restore, run sql / file", "", emptyOk: true) };
+
+            opts.AfterRestoration = new[] {Ask("  after restore, run sql / file", "", emptyOk: true)};
+
+            string FirstNonEmpty(params string[] values)
+            {
+                return values.Aggregate(
+                    "",
+                    (acc, cur) => string.IsNullOrWhiteSpace(acc)
+                        ? cur
+                        : acc
+                );
+            }
         }
 
         private static bool TryGetBoolean(Func<string> func)
@@ -143,9 +211,19 @@ namespace mysql_clone
                 {
                     current = thisAnswer;
                 }
-            } while (string.IsNullOrWhiteSpace(current) || emptyOk);
+            } while (ShouldAskAgain());
 
             return current;
+
+            bool ShouldAskAgain()
+            {
+                if (emptyOk)
+                {
+                    return false;
+                }
+
+                return string.IsNullOrWhiteSpace(current);
+            }
         }
 
         private static void RunAfterCommands(IOptions opts, Tools tools)
@@ -164,7 +242,7 @@ namespace mysql_clone
             {
                 if (File.Exists(after))
                 {
-                    StreamFileToStdIn(after, io, Fail);
+                    StreamFileToStdIn(after, io, Fail, s => FixEncodingsIfRequired(s, opts));
                 }
                 else
                 {
@@ -187,14 +265,78 @@ namespace mysql_clone
                 $"Restore target {opts.TargetDatabase} on {opts.TargetHost} from {inputFile}"
             );
             using var io = StartMySqlClientForTargetDatabase(opts, tools, Fail);
-            StreamFileToStdIn(inputFile, io, Fail);
-            Ok();
+            StreamFileToStdIn(inputFile, io, Fail, s => FixEncodingsIfRequired(s, opts));
+            io.Process.StandardInput.Close();
+            io.Process.WaitForExit();
+            if (io.Process.ExitCode == 0)
+            {
+                Ok();
+            }
+            else
+            {
+                Fail();
+                foreach (var line in io.StandardOutput)
+                {
+                    Console.WriteLine($"ERR: {line}");
+                }
+            }
+        }
+
+        private static void FixEncodingsIfRequired(
+            char[] buffer,
+            IOptions opts
+        )
+        {
+            if (opts.RetainOriginalEncodings)
+            {
+                return;
+            }
+            ReplaceInBuffer(buffer, FindCi, ReplCi);
+            ReplaceInBuffer(buffer, FindCharset, ReplCharset);
+        }
+
+        private static readonly char[] FindCi = "utf8mb4_0900_ai_ci".ToCharArray();
+        private static readonly char[] ReplCi = "utf8_general_ci   ".ToCharArray().PadToLength(FindCi.Length, ' ');
+        private static readonly char[] FindCharset = "CHARSET=utf8mb4".ToCharArray();
+        private static readonly char[] ReplCharset = "CHARSET=utf8".ToCharArray().PadToLength(FindCharset.Length, ' ');
+
+        private static void ReplaceInBuffer(
+            char[] buffer,
+            char[] find,
+            char[] replace
+        )
+        {
+            // hack - only works if the buffers are the same length
+            // otherwise there is bound to be some strangeness
+            var matched = 0;
+            for (var i = 0; i < buffer.Length; i++)
+            {
+                if (buffer[i] != find[matched])
+                {
+                    matched = 0;
+                    continue;
+                }
+
+                matched++;
+                if (matched != find.Length)
+                {
+                    continue;
+                }
+
+                var replIdx = 0;
+                for (var j = i - find.Length + 1; j <= i; j++)
+                {
+                    buffer[j] = replace[replIdx++];
+                }
+                matched = 0;
+            }
         }
 
         private static void StreamFileToStdIn(
             string fileName,
             IProcessIO io,
-            Action onFail
+            Action onFail,
+            Action<char[]> mutator
         )
         {
             using var fileStream = File.Open(fileName, FileMode.Open, FileAccess.Read);
@@ -207,19 +349,20 @@ namespace mysql_clone
             do
             {
                 var fractionDone = totalRead / fileStream.Length;
-                var perc = (int)(fractionDone * 100);
-                var runTime = (decimal)(DateTime.Now - started).TotalSeconds;
+                var perc = (int) (fractionDone * 100);
+                var runTime = (decimal) (DateTime.Now - started).TotalSeconds;
                 var secondsLeft = fractionDone > 0
                     ? runTime / fractionDone
                     : -1;
 
-                ReportProgress(perc, (int)secondsLeft);
+                ReportProgress(perc, (int) secondsLeft);
                 var remaining = fileStream.Length - totalRead;
                 var toRead = remaining > chunk
                     ? chunk
                     : remaining;
-                lastRead = reader.Read(buffer, 0, (int)toRead);
+                lastRead = reader.Read(buffer, 0, (int) toRead);
                 totalRead += lastRead;
+                mutator(buffer);
                 io.Process.StandardInput.Write(buffer, 0, (int)lastRead);
                 ReportError(io, onFail);
             } while (lastRead > 0);
@@ -272,18 +415,27 @@ namespace mysql_clone
                 io.Process.StandardInput.WriteLine(line);
             }
 
+            io.Process.StandardInput.WriteLine("exit");
+            io.Process.WaitForExit();
+            if (io.Process.ExitCode != 0)
+            {
+                Fail();
+            }
+
             Ok();
         }
 
         public static void StartStatus(string label)
         {
             _lastLabel = label;
-            Console.Out.Write($"           {label}");
+            _started = DateTime.Now;
+            Console.Out.Write($"[BUSY]     {label}");
         }
 
         public static void Ok()
         {
-            Console.Out.Write("\r[ OK ]    \n");
+            var runTime = DateTime.Now - _started;
+            Console.Out.Write($"\r[ OK ] {_lastLabel} ({runTime})\n");
         }
 
         public static void Fail()
@@ -314,18 +466,21 @@ namespace mysql_clone
                 return;
             }
 
-            if (io.ExitCode != 0)
+            if (io.ExitCode == 0)
             {
-                onFail();
-                foreach (var line in io.StandardError)
-                {
-                    Console.WriteLine(line);
-                }
-
-                Console.WriteLine($"Command was: {io.Process.StartInfo.FileName} {io.Process.StartInfo.Arguments}");
-
-                Environment.Exit(io.ExitCode);
+                return;
             }
+
+            onFail();
+            Console.WriteLine("");
+            foreach (var line in io.StandardError)
+            {
+                Console.WriteLine(line);
+            }
+
+            Console.WriteLine($"Command was: {io.Process.StartInfo.FileName} {io.Process.StartInfo.Arguments}");
+
+            Environment.Exit(io.ExitCode);
         }
 
         private static string[] GenerateCreationScriptFor(string dbName)
@@ -349,6 +504,7 @@ namespace mysql_clone
                 "-P", opts.SourcePort.ToString(),
                 "-u", opts.SourceUser,
                 $"-p{opts.SourcePassword}",
+                "--routines",
                 "--hex-blob",
                 opts.SourceDatabase
             );
@@ -454,54 +610,30 @@ namespace mysql_clone
         }
     }
 
-    public interface IOptions
+    internal static class CharArrayExtensions
     {
-        [Default("localhost")]
-        [ShortName('h')]
-        public string SourceHost { get; set; }
+        internal static char[] PadToLength(
+            this char[] data,
+            int requiredLength,
+            char padWith
+        )
+        {
+            if (data.Length > requiredLength)
+            {
+                throw new Exception($"Can't pad '{data}' to {requiredLength}: already exceeds this length");
+            }
 
-        [Default("root")]
-        [ShortName('u')]
-        public string SourceUser { get; set; }
-
-        [ShortName('p')]
-        public string SourcePassword { get; set; }
-
-        [Default(3306)]
-        public int SourcePort { get; set; }
-
-        [ShortName('d')]
-        public string SourceDatabase { get; set; }
-
-        [Default("localhost")]
-        [ShortName('H')]
-        public string TargetHost { get; set; }
-
-        [Default("root")]
-        [ShortName('U')]
-        public string TargetUser { get; set; }
-
-        [ShortName('P')]
-        public string TargetPassword { get; set; }
-
-        [ShortName('D')]
-        public string TargetDatabase { get; set; }
-
-        [Default(3306)]
-        public int TargetPort { get; set; }
-
-        public bool RestoreOnly { get; set; }
-
-        public bool Verbose { get; set; }
-        public bool Debug { get; set; }
-
-        [Description("path to use for intermediate sql dump file (optional)")]
-        public string DumpFile { get; set; }
-
-        [Description("sql to run on the target database after restoration completes")]
-        public string[] AfterRestoration { get; set; }
-
-        [Description("Run in interactive mode")]
-        public bool Interactive { get; set; }
+            if (data.Length == requiredLength)
+            {
+                return data;
+            }
+            var result = new char[requiredLength];
+            data.CopyTo(result, 0);
+            for (var i = data.Length; i < result.Length; i++)
+            {
+                result[i] = padWith;
+            }
+            return result;
+        }
     }
 }
