@@ -4,8 +4,8 @@
   "description": "MySQL-Clone",
   "scripts": {
     "build": "cross-env DOTNET_CORE=1 BUILD_CONFIGURATION=Release run-s \"zarro build\"",
-    "start": "dotnet run -p src/mysql-clone/mysql-clone.csproj",
-    "interactive": "dotnet run -p src/mysql-clone/mysql-clone.csproj -- -i",
+    "start": "dotnet run --project src/mysql-clone/mysql-clone.csproj",
+    "interactive": "dotnet run --project src/mysql-clone/mysql-clone.csproj -- -i",
     "zarro": "zarro"
   },
   "keywords": [],
