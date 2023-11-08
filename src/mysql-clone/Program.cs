@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading;
 using PeanutButter.EasyArgs;
 using PeanutButter.Utils;
 
@@ -508,6 +506,7 @@ namespace mysql_clone
                 "--hex-blob",
                 opts.SourceDatabase
             );
+            io.MaxBufferLines = 1024;
             ReportError(io, Fail);
             using var fs = File.Open(opts.DumpFile, FileMode.Create, FileAccess.Write);
             io.StandardOutput.ForEach(line =>
