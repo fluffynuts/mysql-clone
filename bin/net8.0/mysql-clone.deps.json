@@ -1,0 +1,76 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "mysql-clone/1.0.0": {
+        "dependencies": {
+          "PeanutButter.EasyArgs": "3.0.229",
+          "PeanutButter.Utils": "3.0.229"
+        },
+        "runtime": {
+          "mysql-clone.dll": {}
+        }
+      },
+      "PeanutButter.DuckTyping/3.0.229": {
+        "runtime": {
+          "lib/netstandard2.0/PeanutButter.DuckTyping.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "PeanutButter.EasyArgs/3.0.229": {
+        "dependencies": {
+          "PeanutButter.DuckTyping": "3.0.229",
+          "PeanutButter.Utils": "3.0.229"
+        },
+        "runtime": {
+          "lib/netstandard2.0/PeanutButter.EasyArgs.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "PeanutButter.Utils/3.0.229": {
+        "runtime": {
+          "lib/netstandard2.0/PeanutButter.Utils.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "mysql-clone/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "PeanutButter.DuckTyping/3.0.229": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-rQrBKPG6ugvgKB7OEK6KJ5hCesLFF1efxYpDGK1evGoIKsQNe62i+MIAPr9z65ucCFQ89ElC7g5RhLMglFoICQ==",
+      "path": "peanutbutter.ducktyping/3.0.229",
+      "hashPath": "peanutbutter.ducktyping.3.0.229.nupkg.sha512"
+    },
+    "PeanutButter.EasyArgs/3.0.229": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-dCnggNvx/WOnHNTJcVqtKE3UmniaI5OLuatxvJyR3eD1rMwpM01NLJb12wwi8APfd/zDK27TldK/KQvIRpreHA==",
+      "path": "peanutbutter.easyargs/3.0.229",
+      "hashPath": "peanutbutter.easyargs.3.0.229.nupkg.sha512"
+    },
+    "PeanutButter.Utils/3.0.229": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-1S0Z7CYxNiA78nbiWejJb/hQoeAC5YuT/zxvMuYfopFR183sFVtA3lHNxJMBrQ2NN+SzsZlT0CsIuQHh87AbRA==",
+      "path": "peanutbutter.utils/3.0.229",
+      "hashPath": "peanutbutter.utils.3.0.229.nupkg.sha512"
+    }
+  }
+}

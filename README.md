@@ -11,8 +11,9 @@ npm ci
 
 _ask the tool how to use it:_
 ```
-npm start -- --help
+npm start -- -- --help
 ```
+(all the `--`s are required to get past npm 🙄)
 
 _run interactively: answer some questions and get a cloned database:_
 ```

@@ -533,10 +533,14 @@ namespace mysql_clone
                 pathParts.Add(TryFindMySqlBinDirInDefaultWindowsLocation());
             }
 
+            var mysqldump = FindInDirs("mysqldump", pathParts, opts);
+            var mysqlcli = FindInDirs("mysql", pathParts, opts);
+            Console.WriteLine($"using mysqldump at {mysqldump}");
+            Console.WriteLine($"using mysql at {mysqlcli}");
             return new Tools()
             {
-                MySqlDump = FindInDirs("mysqldump", pathParts, opts),
-                MySqlCli = FindInDirs("mysql", pathParts, opts)
+                MySqlDump = mysqldump,
+                MySqlCli = mysqlcli
             };
         }
 
