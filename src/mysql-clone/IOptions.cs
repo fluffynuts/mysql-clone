@@ -54,4 +54,34 @@ public interface IOptions
 
     [Description("Do not run in the restore with charset utf8mb4 overridden to utf8")]
     public bool RetainOriginalEncodings { get; set; }
+
+    [Description("Host to use for target AND source")]
+    [Default("localhost")]
+    public string Host { get; set; }
+
+    [Description("User to use for target AND source")]
+    [Default("root")]
+    public string User { get; set; }
+
+    [Description("Password to use for target AND host")]
+    public string Password { get; set; }
+}
+
+public static class OptionsExtensions
+{
+    public static IOptions FixUpForSourceAndTargetOnSameMachine(
+        this IOptions opts
+    )
+    {
+        if (opts.SourceHost != opts.TargetHost ||
+            opts.SourceUser != opts.TargetUser)
+
+        {
+            return opts;
+        }
+
+        var password = opts.Password ?? opts.SourcePassword ?? opts.TargetPassword;
+        opts.Password = opts.SourcePassword = opts.TargetPassword = password;
+        return opts;
+    }
 }

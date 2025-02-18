@@ -5,6 +5,11 @@ VisualStudioVersion = 16.0.30114.105
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mysql-clone", "mysql-clone\mysql-clone.csproj", "{DACFCD19-31BB-4438-8A43-704321E77D6A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".config", ".config", "{4B6E4D2A-0FAF-4761-B58B-BD9B2001EB7C}"
+	ProjectSection(SolutionItems) = preProject
+		..\package.json = ..\package.json
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

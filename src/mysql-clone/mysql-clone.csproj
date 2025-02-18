@@ -11,8 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="peanutbutter.easyargs" Version="3.0.229" />
-    <PackageReference Include="peanutbutter.utils" Version="3.0.229" />
+    <PackageReference Include="peanutbutter.easyargs" Version="3.0.343" />
+    <PackageReference Include="peanutbutter.utils" Version="3.0.343" />
   </ItemGroup>
 
 </Project>
