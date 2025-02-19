@@ -15,4 +15,8 @@
     <PackageReference Include="peanutbutter.utils" Version="3.0.343" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\pastel\src\Pastel.csproj" />
+  </ItemGroup>
+
 </Project>

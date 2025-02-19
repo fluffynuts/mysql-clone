@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Pastel;
 using PeanutButter.EasyArgs;
 using PeanutButter.Utils;
 
@@ -59,8 +60,12 @@ class Program
             DumpSource(opts, tools);
         }
 
-        CreateTargetDatabase(opts, tools);
-        RestoreTargetDatabase(opts, tools);
+        if (!opts.DumpOnly)
+        {
+            CreateTargetDatabase(opts, tools);
+            RestoreTargetDatabase(opts, tools);
+        }
+
         RunAfterCommands(opts, tools);
 
         return 0;
@@ -68,17 +73,18 @@ class Program
 
     private static void ForceInteractiveIfRequired(IOptions opts)
     {
-        var sourcePasswordRequired = !opts.RestoreOnly && string.IsNullOrWhiteSpace(opts.SourcePassword);
-        var targetPasswordRequired = string.IsNullOrWhiteSpace(opts.TargetPassword);
-        var sourceDbRequired = !opts.RestoreOnly && string.IsNullOrWhiteSpace(opts.SourceDatabase);
-        var targetDbRequired = string.IsNullOrWhiteSpace(opts.TargetDatabase);
+        var sourceDetailsRequired = opts.DumpOnly || !opts.RestoreOnly;
+        var targetDetailsRequired = !opts.DumpOnly || opts.RestoreOnly;
+        var sourcePasswordRequired = sourceDetailsRequired && string.IsNullOrWhiteSpace(opts.SourcePassword);
+        var sourceDbRequired = sourceDetailsRequired && string.IsNullOrWhiteSpace(opts.SourceDatabase);
+        var targetPasswordRequired = targetDetailsRequired && string.IsNullOrWhiteSpace(opts.TargetPassword);
+        var targetDbRequired = targetDetailsRequired && string.IsNullOrWhiteSpace(opts.TargetDatabase);
         // bare minimum required inputs as server, user & port have defaults
         if (sourcePasswordRequired ||
             targetPasswordRequired ||
             sourceDbRequired ||
             targetDbRequired)
         {
-            Console.Write(new { sourcePasswordRequired, targetPasswordRequired, sourceDbRequired, targetDbRequired });
             opts.Interactive = true;
         }
     }
@@ -281,8 +287,8 @@ class Program
             $"Restore target {opts.TargetDatabase} on {opts.TargetHost} from {inputFile}"
         );
         var io1 = ProcessIO
-            .WithStdOutReceiver(Console.WriteLine)
-            .WithStdErrReceiver(Console.Error.WriteLine)
+            .WithStdOutReceiver(RestoreLog)
+            .WithStdErrReceiver(RestoreError)
             .Start(
             tools.MySqlCli,
             "-h",
@@ -312,6 +318,16 @@ class Program
                 Console.WriteLine($"ERR: {line}");
             }
         }
+    }
+
+    private static void RestoreError(string str)
+    {
+        Console.WriteLine($"restore: {str}".Pastel(ConsoleColor.Red));
+    }
+
+    private static void RestoreLog(string str)
+    {
+        Console.WriteLine($"restore: {str}");
     }
 
     private static void FixEncodingsIfRequired(
@@ -463,19 +479,19 @@ class Program
     }
 
     public static void ReportProgress(
-        int perc,
+        int percentComplete,
         int secondsLeft
     )
     {
         if (secondsLeft < 0)
         {
-            Console.Out.Write($"\r{perc,2}%       ");
+            Console.Out.Write($"\r{percentComplete,2}%       ");
             return;
         }
 
         var minutes = secondsLeft / 60;
         var seconds = secondsLeft % 60;
-        Console.Out.Write($"\r{perc,2}% {minutes:00}:{seconds:00} \r");
+        Console.Out.Write($"\r{percentComplete,2}% {minutes:00}:{seconds:00} \r");
     }
 
     private static void ReportError(IProcessIO io, Action onFail)
@@ -525,6 +541,7 @@ class Program
                 {
                     lock (ioLock)
                     {
+                        // ReSharper disable once AccessToDisposedClosure
                         fs.WriteString($"{line}\n");
                     }
                 }
@@ -547,7 +564,7 @@ class Program
         Ok();
     }
 
-    public static Tools FindTools(IOptions opts)
+    private static Tools FindTools(IOptions opts)
     {
         var sep = OperatingSystem.IsWindows()
             ? ";"

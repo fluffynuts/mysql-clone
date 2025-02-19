@@ -38,7 +38,11 @@ public interface IOptions
     [Default(3306)]
     public int TargetPort { get; set; }
 
+    [Description("Use the provided dump file - don't attempt to dump again")]
     public bool RestoreOnly { get; set; }
+
+    [Description("Only dump - don't attempt restore")]
+    public bool DumpOnly { get; set; }
 
     public bool Verbose { get; set; }
     public bool Debug { get; set; }
