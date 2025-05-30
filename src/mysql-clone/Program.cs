@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
+using Dapper;
+using MySqlConnector;
 using Pastel;
 using PeanutButter.EasyArgs;
 using PeanutButter.Utils;
@@ -13,10 +16,14 @@ class Program
     private static string _lastLabel;
     private static DateTime _started;
 
-    static int Main(string[] args)
+    static int Main(
+        string[] args
+    )
     {
         var opts = args.ParseTo<IOptions>()
-            .FixUpForSourceAndTargetOnSameMachine();
+            .FixUpForSourceAndTargetOnSameMachine()
+            .FillInImpliedOptions()
+            .FixQuoting();
         var tools = FindTools(opts);
         if (!tools.IsValid)
         {
@@ -32,7 +39,6 @@ class Program
             Console.WriteLine($"Using mysql at: {tools.MySqlCli}");
         }
 
-
         using var tempFile = new AutoTempFile();
         if (string.IsNullOrWhiteSpace(opts.DumpFile))
         {
@@ -46,6 +52,29 @@ class Program
 
         ForceInteractiveIfRequired(opts);
         RunInteractiveIfRequired(opts);
+
+        var connectionString = new MySqlConnectionStringBuilder()
+        {
+            Server = opts.SourceHost,
+            Database = opts.SourceDatabase,
+            UserID = opts.SourceUser,
+            Password = opts.SourcePassword,
+            Port = (uint) opts.SourcePort
+        }.ToString();
+        using var conn = new MySqlConnection(connectionString);
+        var sourceDbInfo = conn.Query<SchemaInfo>(
+            $"""
+             select 
+                 schema_name,
+                 default_character_set_name, 
+                 default_collation_name 
+             from 
+                 information_schema.schemata
+             where
+                 schema_name = @{nameof(opts.SourceDatabase)}
+             """,
+            opts
+        ).FirstOrDefault();
 
         if (opts.RestoreOnly)
         {
@@ -62,7 +91,7 @@ class Program
 
         if (!opts.DumpOnly)
         {
-            CreateTargetDatabase(opts, tools);
+            CreateTargetDatabase(opts, tools, sourceDbInfo);
             RestoreTargetDatabase(opts, tools);
         }
 
@@ -71,7 +100,9 @@ class Program
         return 0;
     }
 
-    private static void ForceInteractiveIfRequired(IOptions opts)
+    private static void ForceInteractiveIfRequired(
+        IOptions opts
+    )
     {
         var sourceDetailsRequired = opts.DumpOnly || !opts.RestoreOnly;
         var targetDetailsRequired = !opts.DumpOnly || opts.RestoreOnly;
@@ -85,11 +116,39 @@ class Program
             sourceDbRequired ||
             targetDbRequired)
         {
+            var message = new List<string>()
+            {
+                "One or more required options were missing - dropping to interactive mode:"
+            };
+            if (sourceDbRequired)
+            {
+                message.Add(" --source-database");
+            }
+
+            if (sourcePasswordRequired)
+            {
+                message.Add(" -- source-password");
+            }
+
+            if (targetDbRequired)
+            {
+                message.Add(" --target-database");
+            }
+
+            if (targetPasswordRequired)
+            {
+                message.Add(" --target-password");
+            }
+
+            Console.WriteLine(message.JoinWith("\n"));
             opts.Interactive = true;
         }
     }
 
-    private static string ReadPassword(string prompt, string existing)
+    private static string ReadPassword(
+        string prompt,
+        string existing
+    )
     {
         var add = string.IsNullOrWhiteSpace(existing)
             ? ""
@@ -112,7 +171,9 @@ class Program
         }
     }
 
-    private static void RunInteractiveIfRequired(IOptions opts)
+    private static void RunInteractiveIfRequired(
+        IOptions opts
+    )
     {
         if (!opts.Interactive)
         {
@@ -154,7 +215,6 @@ class Program
         {
             targetUser = opts.SourceUser;
             targetPassword = opts.SourcePassword;
-            targetPort = opts.SourcePort;
         }
         else
         {
@@ -169,18 +229,25 @@ class Program
 
         opts.AfterRestoration = new[] { Ask("  after restore, run sql / file", "", emptyOk: true) };
 
-        string FirstNonEmpty(params string[] values)
+        string FirstNonEmpty(
+            params string[] values
+        )
         {
             return values.Aggregate(
                 "",
-                (acc, cur) => string.IsNullOrWhiteSpace(acc)
+                (
+                    acc,
+                    cur
+                ) => string.IsNullOrWhiteSpace(acc)
                     ? cur
                     : acc
             );
         }
     }
 
-    private static bool TryGetBoolean(Func<string> func)
+    private static bool TryGetBoolean(
+        Func<string> func
+    )
     {
         var input = func();
         if (bool.TryParse(input, out var result))
@@ -191,7 +258,9 @@ class Program
         return input.AsBoolean();
     }
 
-    private static int TryGetInt(Func<string> func)
+    private static int TryGetInt(
+        Func<string> func
+    )
     {
         while (true)
         {
@@ -234,7 +303,10 @@ class Program
         }
     }
 
-    private static void RunAfterCommands(IOptions opts, Tools tools)
+    private static void RunAfterCommands(
+        IOptions opts,
+        Tools tools
+    )
     {
         var items = opts.AfterRestoration
             ?.Where(s => !string.IsNullOrWhiteSpace(s))
@@ -256,7 +328,7 @@ class Program
             opts.TargetDatabase,
             "-u",
             opts.TargetUser,
-            $"-p{opts.TargetPassword}"
+            $"--password={opts.TargetPassword}"
         );
         ReportError(io1, onFail);
         using var io = io1;
@@ -290,17 +362,17 @@ class Program
             .WithStdOutReceiver(RestoreLog)
             .WithStdErrReceiver(RestoreError)
             .Start(
-            tools.MySqlCli,
-            "-h",
-            opts.TargetHost,
-            "-P",
-            opts.TargetPort.ToString(),
-            "-D",
-            opts.TargetDatabase,
-            "-u",
-            opts.TargetUser,
-            $"-p{opts.TargetPassword}"
-        );
+                tools.MySqlCli,
+                "-h",
+                opts.TargetHost,
+                "-P",
+                opts.TargetPort.ToString(),
+                "-D",
+                opts.TargetDatabase,
+                "-u",
+                opts.TargetUser,
+                $"--password={opts.TargetPassword}"
+            );
         ReportError(io1, Fail);
         using var io = io1;
         StreamFileToStdIn(inputFile, io, Fail, s => FixEncodingsIfRequired(s, opts));
@@ -320,12 +392,16 @@ class Program
         }
     }
 
-    private static void RestoreError(string str)
+    private static void RestoreError(
+        string str
+    )
     {
         Console.WriteLine($"restore: {str}".Pastel(ConsoleColor.Red));
     }
 
-    private static void RestoreLog(string str)
+    private static void RestoreLog(
+        string str
+    )
     {
         Console.WriteLine($"restore: {str}");
     }
@@ -440,12 +516,13 @@ class Program
 
     private static void CreateTargetDatabase(
         IOptions opts,
-        Tools tools
+        Tools tools,
+        SchemaInfo sourceDbInfo
     )
     {
         StartStatus($"Create target: {opts.TargetDatabase} on {opts.TargetHost}");
         using var io = StartMySqlClientForTarget(opts, tools, Fail);
-        foreach (var line in GenerateCreationScriptFor(opts.TargetDatabase))
+        foreach (var line in GenerateCreationScriptFor(opts.TargetDatabase, sourceDbInfo))
         {
             io.Process.StandardInput.WriteLine(line);
         }
@@ -460,7 +537,9 @@ class Program
         Ok();
     }
 
-    public static void StartStatus(string label)
+    public static void StartStatus(
+        string label
+    )
     {
         _lastLabel = label;
         _started = DateTime.Now;
@@ -494,7 +573,10 @@ class Program
         Console.Out.Write($"\r{percentComplete,2}% {minutes:00}:{seconds:00} \r");
     }
 
-    private static void ReportError(IProcessIO io, Action onFail)
+    private static void ReportError(
+        IProcessIO io,
+        Action onFail
+    )
     {
         if (!io.Process.HasExited)
         {
@@ -518,13 +600,19 @@ class Program
         Environment.Exit(io.ExitCode);
     }
 
-    private static string[] GenerateCreationScriptFor(string dbName)
+    private static string[] GenerateCreationScriptFor(
+        string dbName,
+        SchemaInfo sourceDbInfo
+    )
     {
-        return new[]
-        {
+        dbName = dbName.Replace("`", "");
+        var characterSet = sourceDbInfo?.default_character_set_name ?? "utf8bm4";
+        var collation = sourceDbInfo?.default_collation_name ?? "utf8mb4_unicode_ci";
+        return
+        [
             $"drop database if exists `{dbName}`;",
-            $"create database `{dbName}`;"
-        };
+            $"create database `{dbName}` character set '{characterSet}' collate '{collation}';"
+        ];
     }
 
     private static void DumpSource(
@@ -532,10 +620,31 @@ class Program
         Tools tools
     )
     {
+        StartStatus($"Querying character set and collation on {opts.SourceDatabase} at {opts.SourceHost}");
+
         StartStatus($"Dumping source database {opts.SourceDatabase} on {opts.SourceHost} to {opts.DumpFile}");
         var ioLock = new object();
         using var fs = File.Open(opts.DumpFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+        var args = new List<string>()
+        {
+            "-h",
+            opts.SourceHost,
+            "-P",
+            opts.SourcePort.ToString(),
+            "-u",
+            opts.SourceUser,
+            $"--password={opts.SourcePassword}",
+            "--routines",
+            "--hex-blob",
+            opts.SourceDatabase
+        };
+        if (opts.SingleTransaction)
+        {
+            args.Add("--single-transaction");
+        }
+
         using var io = ProcessIO
+            .WithStdErrReceiver(s => Console.Error.WriteLine(s))
             .WithStdOutReceiver(
                 line =>
                 {
@@ -547,16 +656,7 @@ class Program
                 }
             ).Start(
                 tools.MySqlDump,
-                "-h",
-                opts.SourceHost,
-                "-P",
-                opts.SourcePort.ToString(),
-                "-u",
-                opts.SourceUser,
-                $"-p{opts.SourcePassword}",
-                "--routines",
-                "--hex-blob",
-                opts.SourceDatabase
+                args.ToArray()
             );
         io.MaxBufferLines = 1024;
         io.WaitForExit();
@@ -564,7 +664,9 @@ class Program
         Ok();
     }
 
-    private static Tools FindTools(IOptions opts)
+    private static Tools FindTools(
+        IOptions opts
+    )
     {
         var sep = OperatingSystem.IsWindows()
             ? ";"
@@ -633,11 +735,17 @@ class Program
         return pathParts.Where(s => !string.IsNullOrWhiteSpace(s))
             .Aggregate(
                 null as string,
-                (acc, cur) => acc ?? PathIfExists(Path.Join(cur, exe), opts)
+                (
+                    acc,
+                    cur
+                ) => acc ?? PathIfExists(Path.Join(cur, exe), opts)
             );
     }
 
-    private static string PathIfExists(string path, IOptions options)
+    private static string PathIfExists(
+        string path,
+        IOptions options
+    )
     {
         if (options.Debug)
         {
@@ -657,34 +765,5 @@ class Program
 
         public string MySqlDump { get; set; }
         public string MySqlCli { get; set; }
-    }
-}
-
-internal static class CharArrayExtensions
-{
-    internal static char[] PadToLength(
-        this char[] data,
-        int requiredLength,
-        char padWith
-    )
-    {
-        if (data.Length > requiredLength)
-        {
-            throw new Exception($"Can't pad '{data}' to {requiredLength}: already exceeds this length");
-        }
-
-        if (data.Length == requiredLength)
-        {
-            return data;
-        }
-
-        var result = new char[requiredLength];
-        data.CopyTo(result, 0);
-        for (var i = data.Length; i < result.Length; i++)
-        {
-            result[i] = padWith;
-        }
-
-        return result;
     }
 }

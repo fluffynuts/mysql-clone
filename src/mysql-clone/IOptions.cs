@@ -69,10 +69,41 @@ public interface IOptions
 
     [Description("Password to use for target AND host")]
     public string Password { get; set; }
+
+    [Description(
+        "Instruct mysqldump to use a single transaction - may work around issues like 'definer does not exist'"
+    )]
+    public bool SingleTransaction { get; set; }
 }
 
 public static class OptionsExtensions
 {
+    public static IOptions FixQuoting(
+        this IOptions options
+    )
+    {
+        options.SourcePassword = DeQuoteAsRequired(options.SourcePassword);
+        options.TargetPassword = DeQuoteAsRequired(options.TargetPassword);
+        return options;
+    }
+
+    public static IOptions FillInImpliedOptions(
+        this IOptions options
+    )
+    {
+        if (string.IsNullOrWhiteSpace(options.TargetDatabase))
+        {
+            options.TargetDatabase = options.SourceDatabase;
+        }
+        return options;
+    }
+    private static string DeQuoteAsRequired(
+        string str
+    )
+    {
+        return str.Trim('\'');
+    }
+
     public static IOptions FixUpForSourceAndTargetOnSameMachine(
         this IOptions opts
     )

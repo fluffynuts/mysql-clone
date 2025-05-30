@@ -5,14 +5,16 @@
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>mysql_clone</RootNamespace>
   </PropertyGroup>
-  
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <OutputPath>../../bin</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="peanutbutter.easyargs" Version="3.0.343" />
-    <PackageReference Include="peanutbutter.utils" Version="3.0.343" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <PackageReference Include="peanutbutter.easyargs" Version="3.0.384" />
+    <PackageReference Include="peanutbutter.utils" Version="3.0.384" />
   </ItemGroup>
 
   <ItemGroup>
