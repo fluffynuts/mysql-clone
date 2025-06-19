@@ -73,7 +73,20 @@ public interface IOptions
     [Description(
         "Instruct mysqldump to use a single transaction - may work around issues like 'definer does not exist'"
     )]
+    [Default(true)]
     public bool SingleTransaction { get; set; }
+
+    [Description("Instruct mysqldump to not lock tables")]
+    [Default(true)]
+    public bool NoLock { get; set; }
+
+    [Description("Dump binary objects as hex blobs")]
+    [Default(true)]
+    public bool HexBlob { get; set; }
+
+    [Description("Passed onto mysqldump as --complete-insert (1 insert per row)")]
+    [Default(true)]
+    bool CompleteInsert { get; set; }
 }
 
 public static class OptionsExtensions

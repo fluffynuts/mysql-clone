@@ -39,7 +39,12 @@ class Program
             Console.WriteLine($"Using mysql at: {tools.MySqlCli}");
         }
 
-        using var tempFile = new AutoTempFile();
+        var targetIsFolder = !string.IsNullOrWhiteSpace(opts.DumpFile) &&
+            Directory.Exists(opts.DumpFile);
+
+        using var tempFile = targetIsFolder
+            ? new AutoTempFile(opts.DumpFile, "")
+            : new AutoTempFile();
         if (string.IsNullOrWhiteSpace(opts.DumpFile))
         {
             opts.DumpFile = tempFile.Path;
@@ -634,10 +639,24 @@ class Program
             "-u",
             opts.SourceUser,
             $"--password={opts.SourcePassword}",
-            "--routines",
-            "--hex-blob",
-            opts.SourceDatabase
+            "--routines"
         };
+        if (opts.HexBlob)
+        {
+            args.Add("--hex-blob");
+        }
+
+        if (opts.NoLock)
+        {
+            args.Add("--lock-tables=false");
+        }
+
+        if (opts.CompleteInsert)
+        {
+            args.Add("--complete-insert");
+        }
+
+        args.Add(opts.SourceDatabase);
         if (opts.SingleTransaction)
         {
             args.Add("--single-transaction");
